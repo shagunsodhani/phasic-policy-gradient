@@ -1,12 +1,17 @@
 import argparse
-from mpi4py import MPI
-from . import ppg
-from . import torch_util as tu
-from .impala_cnn import ImpalaEncoder
-from . import logger
-from .envs import get_venv
 
-def train_fn(env_name="coinrun",
+import hydra
+from mpi4py import MPI
+from omegaconf import DictConfig, OmegaConf
+
+from . import logger, ppg
+from . import torch_util as tu
+from .envs import get_venv
+from .impala_cnn import ImpalaEncoder
+
+
+def train_fn(
+    env_name="coinrun",
     distribution_mode="hard",
     arch="dual",  # 'shared', 'detach', or 'dual'
     # 'shared' = shared policy and value networks
@@ -35,7 +40,7 @@ def train_fn(env_name="coinrun",
     tu.register_distributions_for_tree_util()
 
     if log_dir is not None:
-        format_strs = ['csv', 'stdout'] if comm.Get_rank() == 0 else []
+        format_strs = ["json", "stdout"] if comm.Get_rank() == 0 else []
         logger.configure(comm=comm, dir=log_dir, format_strs=format_strs)
 
     venv = get_venv(num_envs=num_envs, env_name=env_name, distribution_mode=distribution_mode)
@@ -76,31 +81,27 @@ def train_fn(env_name="coinrun",
         comm=comm,
     )
 
-def main():
-    parser = argparse.ArgumentParser(description='Process PPG training arguments.')
-    parser.add_argument('--env_name', type=str, default='coinrun')
-    parser.add_argument('--num_envs', type=int, default=64)
-    parser.add_argument('--n_epoch_pi', type=int, default=1)
-    parser.add_argument('--n_epoch_vf', type=int, default=1)
-    parser.add_argument('--n_aux_epochs', type=int, default=6)
-    parser.add_argument('--n_pi', type=int, default=32)
-    parser.add_argument('--clip_param', type=float, default=0.2)
-    parser.add_argument('--kl_penalty', type=float, default=0.0)
-    parser.add_argument('--arch', type=str, default='dual') # 'shared', 'detach', or 'dual'
 
-    args = parser.parse_args()
+@hydra.main(
+    config_path="/private/home/sodhani/projects/phasic-policy-gradient/conf",
+    config_name="config",
+)
+def main(cfg: DictConfig):
 
     comm = MPI.COMM_WORLD
 
     train_fn(
-        env_name=args.env_name,
-        num_envs=args.num_envs,
-        n_epoch_pi=args.n_epoch_pi,
-        n_epoch_vf=args.n_epoch_vf,
-        n_aux_epochs=args.n_aux_epochs,
-        n_pi=args.n_pi,
-        arch=args.arch,
-        comm=comm)
+        env_name=cfg.env_name,
+        num_envs=cfg.num_envs,
+        n_epoch_pi=cfg.n_epoch_pi,
+        n_epoch_vf=cfg.n_epoch_vf,
+        n_aux_epochs=cfg.n_aux_epochs,
+        n_pi=cfg.n_pi,
+        arch=cfg.arch,
+        comm=comm,
+        log_dir=cfg.log_dir,
+    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
