@@ -6,10 +6,10 @@ from omegaconf import DictConfig, OmegaConf
 from xplogger.logbook import LogBook
 from xplogger.utils import serialize_log_to_json
 
-from . import logger, ppg
-from . import torch_util as tu
-from .envs import get_venv
-from .impala_cnn import ImpalaEncoder
+from phasic_policy_gradient import logger, ppg
+from phasic_policy_gradient import torch_util as tu
+from phasic_policy_gradient.envs import get_venv
+from phasic_policy_gradient.impala_cnn import ImpalaEncoder
 
 
 def train_fn(

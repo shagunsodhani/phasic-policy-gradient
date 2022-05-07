@@ -31,7 +31,7 @@ pip install -e phasic-policy-gradient
 PPG with default hyperparameters (results/ppg-runN):
 
 ```
-mpiexec -np 4 python -m phasic_policy_gradient.train
+mpiexec -np 4 python phasic_policy_gradient/train.py
 python -m phasic_policy_gradient.graph --experiment_name ppg
 ```
 
