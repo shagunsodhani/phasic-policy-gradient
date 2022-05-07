@@ -2,6 +2,7 @@ import argparse
 
 import hydra
 from mpi4py import MPI
+from oc_extras.resolvers import register_new_resolvers
 from omegaconf import DictConfig, OmegaConf
 
 from . import logger, ppg
@@ -21,19 +22,20 @@ def train_fn(
     num_envs=64,
     n_epoch_pi=1,
     n_epoch_vf=1,
-    gamma=.999,
+    gamma=0.999,
     aux_lr=5e-4,
     lr=5e-4,
     nminibatch=8,
     aux_mbsize=4,
-    clip_param=.2,
+    clip_param=0.2,
     kl_penalty=0.0,
     n_aux_epochs=6,
     n_pi=32,
     beta_clone=1.0,
     vf_true_weight=1.0,
-    log_dir='/tmp/ppg',
-    comm=None):
+    log_dir="/tmp/ppg",
+    comm=None,
+):
     if comm is None:
         comm = MPI.COMM_WORLD
     tu.setup_dist(comm=comm)
@@ -43,7 +45,9 @@ def train_fn(
         format_strs = ["json", "stdout"] if comm.Get_rank() == 0 else []
         logger.configure(comm=comm, dir=log_dir, format_strs=format_strs)
 
-    venv = get_venv(num_envs=num_envs, env_name=env_name, distribution_mode=distribution_mode)
+    venv = get_venv(
+        num_envs=num_envs, env_name=env_name, distribution_mode=distribution_mode
+    )
 
     enc_fn = lambda obtype: ImpalaEncoder(
         obtype.shape,
@@ -71,7 +75,7 @@ def train_fn(
             n_epoch_pi=n_epoch_pi,
             clip_param=clip_param,
             kl_penalty=kl_penalty,
-            log_save_opts={"save_mode": "last"}
+            log_save_opts={"save_mode": "last"},
         ),
         aux_lr=aux_lr,
         aux_mbsize=aux_mbsize,
@@ -99,9 +103,10 @@ def main(cfg: DictConfig):
         n_pi=cfg.n_pi,
         arch=cfg.arch,
         comm=comm,
-        log_dir=cfg.log_dir,
+        log_dir=cfg.setup.save_dir,
     )
 
 
 if __name__ == "__main__":
+    register_new_resolvers()
     main()

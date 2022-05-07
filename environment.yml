@@ -13,3 +13,4 @@ dependencies:
     - matplotlib==3.1.1
     - hydra-core==1.1.2
     - hydra-submitit-launcher==1.1.6
+    - oc-extras==0.1
