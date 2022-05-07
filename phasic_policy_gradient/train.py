@@ -1,9 +1,10 @@
-import argparse
-
 import hydra
 from mpi4py import MPI
+from notifiers import get_notifier
 from oc_extras.resolvers import register_new_resolvers
 from omegaconf import DictConfig, OmegaConf
+from xplogger.logbook import LogBook
+from xplogger.utils import serialize_log_to_json
 
 from . import logger, ppg
 from . import torch_util as tu
@@ -14,11 +15,12 @@ from .impala_cnn import ImpalaEncoder
 def train_fn(
     env_name="coinrun",
     distribution_mode="hard",
+    num_levels=200,
     arch="dual",  # 'shared', 'detach', or 'dual'
     # 'shared' = shared policy and value networks
     # 'dual' = separate policy and value networks
     # 'detach' = shared policy and value networks, but with the value function gradient detached during the policy phase to avoid interference
-    interacts_total=100_000_000,
+    interacts_total=25_000_000,
     num_envs=64,
     n_epoch_pi=1,
     n_epoch_vf=1,
@@ -46,7 +48,10 @@ def train_fn(
         logger.configure(comm=comm, dir=log_dir, format_strs=format_strs)
 
     venv = get_venv(
-        num_envs=num_envs, env_name=env_name, distribution_mode=distribution_mode
+        num_envs=num_envs,
+        env_name=env_name,
+        distribution_mode=distribution_mode,
+        num_levels=num_levels,
     )
 
     enc_fn = lambda obtype: ImpalaEncoder(
@@ -90,21 +95,62 @@ def train_fn(
     config_path="/private/home/sodhani/projects/phasic-policy-gradient/conf",
     config_name="config",
 )
-def main(cfg: DictConfig):
+def main(config: DictConfig):
+
+    is_debug_job = False
+    slurm_id = config.setup.slurm_id
+    if slurm_id == "-1":
+        # the job is not running on slurm.
+        is_debug_job = True
+    config_id = config.setup.id
+    logbook_config = hydra.utils.instantiate(config.logbook)
+    if "mongo" in logbook_config["loggers"] and (
+        config_id.startswith("pytest_")
+        or config_id in ["sample", "sample_config"]
+        or config_id.startswith("test_")
+        # or is_debug_job
+    ):
+        # do not write the job to mongo db.
+        print(logbook_config["loggers"].pop("mongo"))
+    logbook = LogBook(logbook_config)
+    if not is_debug_job:
+        zulip = get_notifier("zulip")
+        zulip.notify(
+            message=f"Starting experiment for config_id: {config_id}. Slurm id is {slurm_id}",
+            **config.notifier,
+        )
+    config_to_write = OmegaConf.to_container(config, resolve=True)
+    config_to_write["status"] = "RUNNING"
+    config_to_write = OmegaConf.to_container(
+        OmegaConf.create(serialize_log_to_json(config_to_write)), resolve=True
+    )
+    logbook.write_metadata(config_to_write)
+    logbook.write_config(config_to_write)
 
     comm = MPI.COMM_WORLD
 
     train_fn(
-        env_name=cfg.env_name,
-        num_envs=cfg.num_envs,
-        n_epoch_pi=cfg.n_epoch_pi,
-        n_epoch_vf=cfg.n_epoch_vf,
-        n_aux_epochs=cfg.n_aux_epochs,
-        n_pi=cfg.n_pi,
-        arch=cfg.arch,
+        env_name=config.env_name,
+        distribution_mode=config.distribution_mode,
+        num_levels=config.num_levels,
+        num_envs=config.num_envs,
+        n_epoch_pi=config.n_epoch_pi,
+        n_epoch_vf=config.n_epoch_vf,
+        n_aux_epochs=config.n_aux_epochs,
+        n_pi=config.n_pi,
+        arch=config.arch,
         comm=comm,
-        log_dir=cfg.setup.save_dir,
+        log_dir=config.setup.save_dir,
     )
+
+    config_to_write["status"] = "COMPLETED"
+    logbook.write_metadata(config_to_write)
+
+    if not is_debug_job:
+        zulip.notify(
+            message=f"Completed experiment for config_id: {config_id}. Slurm id is {slurm_id}",
+            **config.notifier,
+        )
 
 
 if __name__ == "__main__":
